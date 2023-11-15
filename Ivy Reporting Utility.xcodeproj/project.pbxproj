@@ -8,12 +8,14 @@
 
 /* Begin PBXFileReference section */
 		38E8C29C2B05124400F16086 /* ivy_reporting.py */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.script.python; path = ivy_reporting.py; sourceTree = "<group>"; };
+		38E8C29D2B052ED100F16086 /* read_me.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = read_me.txt; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
 		38E8C2912B0511EF00F16086 = {
 			isa = PBXGroup;
 			children = (
+				38E8C29D2B052ED100F16086 /* read_me.txt */,
 				38E8C29C2B05124400F16086 /* ivy_reporting.py */,
 			);
 			sourceTree = "<group>";
