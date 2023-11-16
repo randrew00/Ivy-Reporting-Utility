@@ -32,9 +32,6 @@ with open(filename, newline='') as csvfile:
 
     for chat in log:
         
-        #DELETE ME
-        print(chat["bot_retrieval"])
-        
         #do not include data for chats with no length
         if not chat["length"]:
             zero_time_chats += 1
@@ -46,6 +43,7 @@ with open(filename, newline='') as csvfile:
             continue
             
 
+        #Note: At this time, this eliminates blank chats
         total_chats += 1
         
         if chat["user_messages"]:
