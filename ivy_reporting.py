@@ -39,16 +39,18 @@ while valid_filename == False:
 
             #parse file data
             for chat in log:
-        
+                
+                #FIXME commented out for clarity at the moment:
                 #do not include data for chats with no length
                 #if not chat["length"]:
                 #    zero_time_chats += 1
                 #    continue
             
+                #FIXME commented out for clarity at the moment:
                 #do not include data for chats with no message from the user
-                #if not chat["user_messages"]:
-                #    zero_message_chats += 1
-                #    continue
+                if not chat["user_messages"]:
+                    zero_message_chats += 1
+                    continue
             
 
                 #do not count chats filtered from above against total
@@ -77,20 +79,18 @@ while valid_filename == False:
 if valid_filename == False:
     raise SystemExit(0)
 
-total_high_conf = total_user_messages - total_no_conf - total_no_conf
+total_high_conf = total_gen + total_retrieval
 
-print("Filtered chats with zero seconds: ", zero_time_chats)
-print("Filtered chats with no user interaction: ", zero_message_chats)
+#print("Filtered chats with zero seconds: ", zero_time_chats)
+#print("Filtered chats with no user interaction: ", zero_message_chats)
 print("Total unique chats served: ", total_chats)
 print("Total messages from users: ", total_user_messages)
-print("Total high confidence responses: ", total_high_conf)
 print("Total generative responses: ", total_gen)
 print("Total retrieval responses: ", total_retrieval)
 print("Total low confidence responses: ", total_low_conf)
 print("Total no confidence responses: ", total_no_conf)
-print("Total low/no confidence responses: ", total_low_conf + total_no_conf)
-print("Generative responses + retrieval responses: ",
-    total_gen + total_retrieval)
+print("Total high confidence responses: ", total_high_conf)
+      
 if total_chats:                                #avoid div by 0
     print("High confidence response rate: ",
         (total_high_conf / total_chats)*100, "%")
