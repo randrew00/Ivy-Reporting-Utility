@@ -35,7 +35,7 @@ while valid_filename == False:
                 "bot_no_conf"))
 	
             valid_filename = True
-            next(log)                #skip first row to remove column labels
+            next(log)                #skip first row containing column labels
 
             #parse file data
             for chat in log:
