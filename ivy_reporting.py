@@ -8,18 +8,33 @@
 
 import csv
 
+
 class Report:
     
+    #raw data attributes present in Data Lake csv file
     total_chats = 0             #total number of unique chats
     total_gen = 0               #total generative responses
     total_retrieval = 0         #total retrieval responses
-    total_high_conf = 0
     total_low_conf = 0          #sum of num_low_conf
     total_no_conf = 0           #sum of num_no_conf
     total_user_messages = 0     #sum of user_messages
+    
+    #derived attrubutes
+    total_high_conf = 0
     zero_time_chats = 0         #filter out non-real chats based on time
     zero_message_chats = 0      #filter out non-real chats based on interaction
     
+    def debug_print(self):
+        """Method to print raw data summary being read into report"""
+
+        print("Total chats = ", self.total_chats)
+        print("Total messages to bot = ", self.total_user_messages)
+        print("Total generative = ", self.total_gen)
+        print("Total retrieval = ", self.total_retrieval)
+        print("Total low confidence responses = ", self.total_low_conf)
+        print("Total no confidence responses = ", self.total_no_conf)
+
+
 def read_report():
 
     valid_filename = False      #loop condition to get valid filename
@@ -29,34 +44,28 @@ def read_report():
 
         try:
             filename = input('Please enter the name of an Ivy Data Lake file:\n')
-            
             if filename == 'quit' or filename == 'q' or filename == 'Quit':
                 break
 
-            #Fragile: Ensure CSV contains only fields enumerated for fieldnames
-            #Else, garbage in garbage out.
             csvfile = open(filename, newline='')
-            #FIXME DELETE
-            print("Opened file")
-            
             log = csv.DictReader(csvfile, fieldnames= ("chat_id", "length",
                     "user_messages", "bot_gen", "bot_retrieval", "bot_low_conf",
                     "bot_no_conf"))
         
-            valid_filename = True
-            next(log)                #skip first row containing column labels
+            valid_filename = True       #if file is open, filename is valid
+            next(log)                   #skip first row containing column label
 
             #parse file data
             for chat in log:
                     
-                #FIXME commented out for clarity at the moment:
-                #do not include data for chats with no length
+                #FIXME: uncomment to filter out chats based on length
+                #do not include data for chats shorter than ???
                 #if not chat["length"]:
                 #    zero_time_chats += 1
                 #    continue
                     
-                #FIXME commented out for clarity at the moment:
-                #do not include data for chats with no message from the user
+                #FIXME: uncomment to filter chats based on number of messages
+                #do not include data for chats with less than ??? messages
                 #    if not chat["user_messages"]:
                 #        reports.zero_message_chats += 1
                 #        continue
@@ -81,9 +90,6 @@ def read_report():
                     report.total_no_conf += int(chat["bot_no_conf"])
         
             csvfile.close()
-            
-            #FIXME Move this under the printer function. Keep reader strictly read
-            #report.total_high_conf = report.total_gen + report.total_retrieval
 
             
         except:
@@ -96,18 +102,28 @@ def read_report():
         
     return report
 
-report = read_report()
 
-#print("Filtered chats with zero seconds: ", zero_time_chats)
-#print("Filtered chats with no user interaction: ", zero_message_chats)
-print("Total unique chats served: ", report.total_chats)
-print("Total messages from users: ", report.total_user_messages)
-print("Total generative responses: ", report.total_gen)
-print("Total retrieval responses: ", report.total_retrieval)
-print("Total low confidence responses: ", report.total_low_conf)
-print("Total no confidence responses: ", report.total_no_conf)
-print("Total high confidence responses: ", report.total_high_conf)
+def print_to_term(report):
+    
+    #report.total_high_conf = report.total_gen + report.total_retrieval
+
+    #print("Filtered chats with zero seconds: ", zero_time_chats)
+    #print("Filtered chats with no user interaction: ", zero_message_chats)
+    print("Total unique chats served: ", report.total_chats)
+    print("Total messages from users: ", report.total_user_messages)
+    print("Total generative responses: ", report.total_gen)
+    print("Total retrieval responses: ", report.total_retrieval)
+    print("Total low confidence responses: ", report.total_low_conf)
+    print("Total no confidence responses: ", report.total_no_conf)
+    #print("Total high confidence responses: ", report.total_high_conf)
       
-if report.total_chats:                                #avoid div by 0
-    print("High confidence response rate: ",
-        (report.total_high_conf / report.total_chats)*100, "%")
+    #if report.total_chats:                                #avoid div by 0
+    #    print("High confidence response rate: ",
+    #        (report.total_high_conf / report.total_chats)*100, "%")
+
+
+#def print_to_file(report):
+    """Coming soon to a theatre near you"""
+
+
+print_to_term(read_report())
