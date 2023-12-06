@@ -1,5 +1,7 @@
 #!/usr/local/bin/python3
 
+#His palms are sweaty, this is Scott's spaghetti.
+
 # Script for reading Data Lake CSV file from Ivy.ai
 # Script assumes .csv file exported from Ivy.ai with following filters:
 # Chat Length, Messages to Bot, Bot Responses (Generative),
@@ -122,8 +124,28 @@ def print_to_term(report):
     #        (report.total_high_conf / report.total_chats)*100, "%")
 
 
-#def print_to_file(report):
-    """Coming soon to a theatre near you"""
+def print_to_file(report):
+
+    #get month and year for header
+    report_month = input("Please enter the month for which the Data Lake " +
+                        "export was pulled: ")
+    report_year = input("Please enter the year for which the Data Lake " +
+                        "export was pulled: ")
+    report_header = report_month.strip() + " " + report_year.strip()
+    
+    bot_report = open('ivy_log.csv', 'a')
+    
+    bot_report.write(report_header + "\n")
+    bot_report.write("Total chats: ")
+    bot_report.write(str(report.total_chats))
+    
+    
+    
+    #Seperate months with double newline and close file
+    bot_report.write("\n\n")
+    bot_report.close()
 
 
-print_to_term(read_report())
+monthly_report = read_report()
+
+print_to_file(monthly_report)
