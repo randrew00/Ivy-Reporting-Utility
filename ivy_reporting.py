@@ -21,11 +21,23 @@ class Report:
     total_no_conf = 0           #sum of num_no_conf
     total_user_messages = 0     #sum of user_messages
     
-    #derived attrubutes
-    total_high_conf = 0
+    #calculated attrubutes
+    total_high_conf = 0         #total_retrival + total_gen
+    total_chats_fired = 0       #retrieval + gen + low + no
+    chats_with_high_conf = 0    #chats which fired a high confidence response
+    accuracy_rate = 0           #total_high_conf / total_user_messages
+    resolution_rate = 0         #total_high_conf / total_chats
     zero_time_chats = 0         #filter out non-real chats based on time
     zero_message_chats = 0      #filter out non-real chats based on interaction
     
+    
+    def calculate_attributes(self):
+        self.total_high_conf = self.total_gen + self.total_retrieval
+        self.total_chats_fired = self.total_gen + self.total_retrieval \
+            + self.total_low_conf + self.total_no_conf
+        self.accuracy_rate = self.total_high_conf / self.total_chats
+
+
     def debug_print(self):
         """Method to print raw data summary being read into report"""
 
@@ -35,6 +47,43 @@ class Report:
         print("Total retrieval = ", self.total_retrieval)
         print("Total low confidence responses = ", self.total_low_conf)
         print("Total no confidence responses = ", self.total_no_conf)
+
+
+    def print_to_term(self):
+        
+        #print("Filtered chats with zero seconds: ", zero_time_chats)
+        #print("Filtered chats with no user interaction: ", zero_message_chats)
+        print("Total unique chats served: ", self.total_chats)
+        print("Chats with a high confidence response: ",
+            self.chats_with_high_conf)
+        print("Total messages from users: ", self.total_user_messages)
+        print("Total generative responses: ", self.total_gen)
+        print("Total retrieval responses: ", self.total_retrieval)
+        print("Total low confidence responses: ", self.total_low_conf)
+        print("Total no confidence responses: ", self.total_no_conf)
+        if self.total_chats:          #avoid div by 0
+            print("Accuracy rate: ",
+                (self.total_high_conf / self.total_chats)*100, "%")
+        if self.total_chats:          #avoid div by 0
+            print("Resolution rate: ",
+                self.chats_with_high_conf / self.total_chats)
+
+
+#FIXME: Will return to print-to-file. Set aside until fundamentals complete
+"""
+    def print_to_file(self):
+        
+        bot_report = open('ivy_log.csv', 'a')
+        
+        bot_report.write(report_header + "\n")
+        bot_report.write("Total chats: ")
+        bot_report.write(str(self.total_chats))
+        
+        
+        #Seperate months with double newline and close file
+        bot_report.write("\n\n")
+        bot_report.close()
+"""
 
 
 def read_report():
@@ -60,18 +109,19 @@ def read_report():
             #parse file data
             for chat in log:
                     
-                #FIXME: uncomment to filter out chats based on length
-                #do not include data for chats shorter than ???
-                #if not chat["length"]:
-                #    zero_time_chats += 1
-                #    continue
+                """
+                #Comment out this block to compare raw data with Ivy
+                #do not include data for chats with no time
+                if not chat["length"]:
+                    zero_time_chats += 1
+                    continue
                     
-                #FIXME: uncomment to filter chats based on number of messages
-                #do not include data for chats with less than ??? messages
-                #    if not chat["user_messages"]:
-                #        reports.zero_message_chats += 1
-                #        continue
-                
+                #Comment out this block to compare raw data with Ivy
+                #do not include data for chats with zero messages
+                    if not chat["user_messages"]:
+                        reports.zero_message_chats += 1
+                        continue
+                """
 
                 #do not count chats filtered from above against total
                 report.total_chats += 1
@@ -90,6 +140,9 @@ def read_report():
         
                 if chat["bot_no_conf"]:
                     report.total_no_conf += int(chat["bot_no_conf"])
+                    
+                if chat["bot_gen"] or chat["bot_retrieval"]:
+                    report.chats_with_high_conf += 1
         
             csvfile.close()
 
@@ -102,50 +155,13 @@ def read_report():
     if valid_filename == False:
         raise SystemExit(0)
         
+    #report read complete. now get derived attibutes
+    report.calculate_attributes()
+    
     return report
-
-
-def print_to_term(report):
-    
-    #report.total_high_conf = report.total_gen + report.total_retrieval
-
-    #print("Filtered chats with zero seconds: ", zero_time_chats)
-    #print("Filtered chats with no user interaction: ", zero_message_chats)
-    print("Total unique chats served: ", report.total_chats)
-    print("Total messages from users: ", report.total_user_messages)
-    print("Total generative responses: ", report.total_gen)
-    print("Total retrieval responses: ", report.total_retrieval)
-    print("Total low confidence responses: ", report.total_low_conf)
-    print("Total no confidence responses: ", report.total_no_conf)
-    #print("Total high confidence responses: ", report.total_high_conf)
-      
-    #if report.total_chats:                                #avoid div by 0
-    #    print("High confidence response rate: ",
-    #        (report.total_high_conf / report.total_chats)*100, "%")
-
-
-def print_to_file(report):
-
-    #get month and year for header
-    report_month = input("Please enter the month for which the Data Lake " +
-                        "export was pulled: ")
-    report_year = input("Please enter the year for which the Data Lake " +
-                        "export was pulled: ")
-    report_header = report_month.strip() + " " + report_year.strip()
-    
-    bot_report = open('ivy_log.csv', 'a')
-    
-    bot_report.write(report_header + "\n")
-    bot_report.write("Total chats: ")
-    bot_report.write(str(report.total_chats))
-    
-    
-    
-    #Seperate months with double newline and close file
-    bot_report.write("\n\n")
-    bot_report.close()
 
 
 monthly_report = read_report()
 
-print_to_file(monthly_report)
+monthly_report.print_to_term()
+#print_to_file(monthly_report)
