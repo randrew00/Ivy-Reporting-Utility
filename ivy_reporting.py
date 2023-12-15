@@ -10,11 +10,14 @@
 #Chat Start Time, Chat Length, Messages to Bot, Bot Responses (Generative),
 #Bot Responses (Retrieval), Bot Responses (Low Confidence),
 #Bot Responses (No Confidence), Attempt to Connect to Live Person,
-#Agent Name, Conversation Rating
+#Connection Established, Conversation Rating
+#NOTE: Data Lake export will include an additional column of data, Chat ID,
+#which is implicit in all exports and is not filterable.
 
 import csv
 import calendar             #https://docs.python.org/3/library/calendar.html
 import string
+import sys
 
 #Service Desk hours in minutes of the day
 weekend_open = 660          #11:00am
@@ -33,24 +36,57 @@ class Report:
     total_retrieval = 0         #sum Bot Responses (Retrieval)
     total_low_conf = 0          #sum Bot Responses (Low Confidence)
     total_no_conf = 0           #sum Bot Responses (No Confidence)
+    total_live_request = 0      #sum requests for live chat
+    total_live_connect = 0      #sum successful connections to live agent
     
+    ah_messages = 0             #sum messages to bot after hours
+    ah_gen = 0                  #sum generative responses after hours
+    ah_retrieval = 0            #sum retrieval after hours
+    ah_low_conf = 0             #sum low confidence after hours
+    ah_no_conf = 0              #sum no confidence after hours
+    ah_live_request = 0         #sum requests for live chat after hours
+    ah_live_connect = 0         #Note: in theory, this should be zero
+    ah_resolved = 0             #sum chats with high conf. resp. after hours
+    
+    bh_messages = 0             #sum messages to bot during business hours
+    bh_gen = 0                  #sum generative responses during business
+    bh_retrieval = 0            #sum retrieval responses during business
+    bh_low_conf = 0             #sum low confidence during business
+    bh_no_conf = 0              #sum no confidence during business
+    bh_live_request = 0         #sum requests for live chat during business
+    bh_live_connect = 0         #sum successful connections during business
+    bh_resolved = 0             #sum chats with high conf. resp during hours
+
     #calculated attrubutes
+    filtered_chats = 0          #chats not counted in total: no time or message
     total_chats = 0             #total number of unique chats
     total_high_conf = 0         #total_retrival + total_gen
     total_responses = 0         #retrieval + gen + low + no
-    chats_with_high_conf = 0    #chats which fired a high confidence response
+    resolved_chats = 0          #chats which fired a high confidence response
     accuracy_rate = 0           #total_high_conf / total_user_messages
-    resolution_rate = 0         #total_high_conf / total_chats
+    resolution_rate = 0         #resolved_chats / total_chats
     zero_time_chats = 0         #filter out non-real chats based on time
     zero_message_chats = 0      #filter out non-real chats based on interaction
-                                #Percentage of
+    sum_ratings = 0
+    num_ratings = 0
+
     
-    
+    #FIXME: WORKING HERE
     def calculate_attributes(self):
+        self.total_user_messages = self.ah_messages + self.bh_messages
+        self.total_gen = self.ah_gen + self.bh_gen
+        self.total_retrieval = self.ah_retrieval + self.bh_retrieval
         self.total_high_conf = self.total_gen + self.total_retrieval
+        self.total_low_conf = self.ah_low_conf + self.bh_low_conf
+        self.total_no_conf = self.ah_no_conf + self.bh_no_conf
         self.total_responses = self.total_gen + self.total_retrieval \
             + self.total_low_conf + self.total_no_conf
         self.accuracy_rate = self.total_high_conf / self.total_chats
+        self.resolved_chats = self.ah_resolved + self.bh_resolved
+        self.resolution_rate = self.resolved_chats / self.total_chats
+
+        if self.num_ratings:             #avoid div / 0
+            self.average_rating = self.sum_ratings / self.num_ratings
 
 
     def debug_print(self):
@@ -70,7 +106,7 @@ class Report:
         #print("Filtered chats with no user interaction: ", zero_message_chats)
         print("Total unique chats served: ", self.total_chats)
         print("Chats with a high confidence response: ",
-            self.chats_with_high_conf)
+            self.resolved_chats)
         print("Total messages from users: ", self.total_user_messages)
         print("Total generative responses: ", self.total_gen)
         print("Total retrieval responses: ", self.total_retrieval)
@@ -78,10 +114,12 @@ class Report:
         print("Total no confidence responses: ", self.total_no_conf)
         if self.total_chats:          #avoid div by 0
             print("Accuracy rate: ",
-                (self.total_high_conf / self.total_chats)*100, "%")
+                (self.total_high_conf / self.total_chats) * 100, "%")
         if self.total_chats:          #avoid div by 0
             print("Resolution rate: ",
-                self.chats_with_high_conf / self.total_chats)
+                (self.resolved_chats / self.total_chats) * 100, "%")
+        if self.average_rating:
+            print("Average rating: ", self.average_rating, "/ 5")
 
 
 #FIXME: Will return to print-to-file. Set aside until fundamentals complete
@@ -126,7 +164,9 @@ def check_hours(start_time):
     minute = int(time) - (hour * 100)    #get the mins
     ampm = date[4]
     
-    if ampm == "PM":
+    if (ampm == "PM") and (hour != 12):
+        hour += 12
+    if (ampm == "AM") and (hour == 12):
         hour += 12
         
     time_in_mins = (hour * 60) + minute #mins since yesterday
@@ -149,7 +189,7 @@ def check_hours(start_time):
         else:
             after_hours = True
     else:
-        #Handle this better
+        #FIXME: Handle this better
         raise SystemExit(0)
     
     return after_hours
@@ -157,95 +197,122 @@ def check_hours(start_time):
 
 def read_report():
 
-    valid_filename = False      #loop condition to get valid filename
-    sum_ratings = 0.0           #sum of all ratings given
-    num_ratings = 0.0           #number of chats rated
     report = Report()
+    valid_filename = False      #loop condition to get valid filename
 
+    #Get Data Lake file name from user
     while valid_filename == False:
 
-        #try:
+        try:
             filename = input('Please enter the name of an Ivy Data Lake file:\n')
             if filename == 'quit' or filename == 'q' or filename == 'Quit':
                 break
-
+            
             csvfile = open(filename, newline='')
-            log = csv.DictReader(csvfile, fieldnames= ("chat_id", "start_time",
-            "length", "user_messages", "bot_gen", "bot_retrieval",
-            "bot_low_conf", "bot_no_conf", "live_request", "agent", "rating"))
-        
-            valid_filename = True       #if file is open, filename is valid
-            next(log)                   #skip first row containing column label
-
-            #parse file data
-            for chat in log:
-                    
-                """
-                #Comment out this block to compare raw data with Ivy
-                #do not include data for chats with no time
-                if not chat["length"]:
-                    zero_time_chats += 1
-                    continue
-                    
-                #Comment out this block to compare raw data with Ivy
-                #do not include data for chats with zero messages
-                    if not chat["user_messages"]:
-                        reports.zero_message_chats += 1
-                        continue
-                """
-
-                #do not count chats filtered from above against total
-                report.total_chats += 1
-                
-                #determine if chat was after hours
-                after_hours = check_hours(chat["start_time"])
-
-                if chat["user_messages"]:
-                    report.total_user_messages += int(chat["user_messages"])
-        
-                if chat["bot_gen"]:
-                    report.total_gen += int(chat["bot_gen"])
             
-                if chat["bot_retrieval"]:
-                    report.total_retrieval += int(chat["bot_retrieval"])
-            
-                if chat["bot_low_conf"]:
-                    report.total_low_conf += int(chat["bot_low_conf"])
-        
-                if chat["bot_no_conf"]:
-                    report.total_no_conf += int(chat["bot_no_conf"])
-                    
-                if chat["bot_gen"] or chat["bot_retrieval"]:
-                    report.chats_with_high_conf += 1
-                    
-                if chat["rating"]:
-                    sum_ratings += float(chat["rating"])
-                    num_ratings += 1
-        
-                                 
-            csvfile.close()
-
-            
-    """
         except:
-            print("\nInvalid filename.")
-            print("Enter filename or type 'quit'.\n")
+            print("\nInvalid filename. Enter filename or type 'quit'.\n")
             continue
-    """
-
+            
+        else:
+            valid_filename = True
+            print("Data Lake file opened successfully...\n")
+    
     if valid_filename == False:
-        raise SystemExit(0)
+        sys.exit(0)
+
+    log = csv.DictReader(csvfile, fieldnames= ("chat_id", "start_time",
+    "length", "user_messages", "bot_gen", "bot_retrieval",
+    "bot_low_conf", "bot_no_conf", "live_request", "live_connect",
+    "rating"))
+    
+    next(log)                   #skip first row containing column label
+
+    #parse file data
+    for chat in log:
         
-    #report read complete. now get derived attibutes
+        """
+        Comment out block below marked FILTER to turn off filtering.
+        Note that chats with only of button clicks will show zero responses.
+        At this time Data Lake does not provide any exposure to buttons.
+        """
+        
+        #FILTER: do not include data for chats with no time or messages
+        if not chat["length"] or not chat["user_messages"]:
+            report.filtered_chats += 1
+            continue
+            
+        #do not count chats filtered from above against total
+        report.total_chats += 1
+        
+        #determine if chat was after hours
+        after_hours = check_hours(chat["start_time"])
+        
+        if chat["user_messages"]:
+            if after_hours:
+                report.ah_messages += int(chat["user_messages"])
+            else:
+                report.bh_messages += int(chat["user_messages"])
+        
+        if chat["bot_gen"]:
+            if after_hours:
+                report.ah_gen += int(chat["bot_gen"])
+            else:
+                report.bh_gen += int(chat["bot_gen"])
+    
+        if chat["bot_retrieval"]:
+            if after_hours:
+                report.ah_retrieval += int(chat["bot_retrieval"])
+            else:
+                report.bh_retrieval += int(chat["bot_retrieval"])
+        
+        if chat["bot_gen"] or chat["bot_retrieval"]:
+            if after_hours:
+                report.ah_resolved += 1
+            else:
+                report.bh_resolved += 1
+
+        if chat["bot_low_conf"]:
+            if after_hours:
+                report.ah_low_conf += int(chat["bot_low_conf"])
+            else:
+                report.bh_low_conf += int(chat["bot_low_conf"])
+                
+
+        if chat["bot_no_conf"]:
+            if after_hours:
+                report.ah_no_conf += int(chat["bot_no_conf"])
+            else:
+                report.bh_no_conf += int(chat["bot_no_conf"])
+
+        if chat["live_request"]:
+            if after_hours:
+                report.ah_live_request += 1
+            else:
+                report.bh_live_request += 1
+
+        if chat["live_connect"]:
+            if after_hours:
+                report.ah_live_connect += 1
+            else:
+                report.ah_live_connect += 1
+
+        if chat["rating"]:
+            report.sum_ratings += float(chat["rating"])
+            report.num_ratings += 1
+                    
+    csvfile.close()
+    
+        
+    #report read complete, now get derived attibutes
     report.calculate_attributes()
-    if num_ratings:             #avoid div / 0
-        report.average_rating = sum_ratings / num_ratings
+    if report.num_ratings:             #avoid div / 0
+        report.average_rating = report.sum_ratings / report.num_ratings
     #FIXME: else what? How to handle months with no ratings?
     
     return report
 
 
 monthly_report = read_report()
-
 monthly_report.print_to_term()
 #print_to_file(monthly_report)
