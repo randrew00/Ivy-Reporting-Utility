@@ -1,18 +1,22 @@
 #!/usr/local/bin/python3
 
-#His palms are sweaty, this is Scott's spaghetti.
+"""
+Script for reading Data Lake CSV file from Ivy.ai
 
-#default to use Data Lake filter for Nov 13 - 19
+"His palms are sweaty, this is Scott's spaghetti."
+Scott Kirian-Cressey
+https://github.com/kirian-cressey
+skirian@bgsu.edu
 
-#Script for reading Data Lake CSV file from Ivy.ai
 
-#Script assumes .csv file exported from Ivy.ai with following filters:
-#Chat Start Time, Chat Length, Messages to Bot, Bot Responses (Generative),
-#Bot Responses (Retrieval), Bot Responses (Low Confidence),
-#Bot Responses (No Confidence), Attempt to Connect to Live Person,
-#Connection Established, Conversation Rating
-#NOTE: Data Lake export will include an additional column of data, Chat ID,
-#which is implicit in all exports and is not filterable.
+Script assumes .csv file exported from Ivy.ai with following filters:
+Chat Start Time, Chat Length, Messages to Bot, Bot Responses (Generative),
+Bot Responses (Retrieval), Bot Responses (Low Confidence),
+Bot Responses (No Confidence), Attempt to Connect to Live Person,
+Connection Established, Conversation Rating
+NOTE: Data Lake export will include an additional column of data, Chat ID,
+which is implicit in all exports and is not filterable.
+"""
 
 import csv
 import calendar             #https://docs.python.org/3/library/calendar.html
@@ -29,6 +33,17 @@ months = {'January': 1, 'February': 2, 'March': 3, 'April': 4, 'May': 5,
     'November': 11, 'December': 12}
 
 class Report:
+    """
+    A report object representing data from an ivy.ai Data Lake export.
+    Report assumes a one-month period, but there is nothing stopping a user
+    from using another unit of time. Period of time depends on the Data Lake
+    file read in, and user will define this period of time (month, fiscal year)
+    through input.
+    """
+    
+    #get from user
+    month = ''                  #i.e. 'October'
+    fy = 0                      #fiscal year
     
     #raw data attributes present in Data Lake csv file
     total_user_messages = 0     #sum Messages to Bot
@@ -39,6 +54,7 @@ class Report:
     total_live_request = 0      #sum requests for live chat
     total_live_connect = 0      #sum successful connections to live agent
     
+    ah_chats = 0                #unique chats after hours
     ah_messages = 0             #sum messages to bot after hours
     ah_gen = 0                  #sum generative responses after hours
     ah_retrieval = 0            #sum retrieval after hours
@@ -47,7 +63,10 @@ class Report:
     ah_live_request = 0         #sum requests for live chat after hours
     ah_live_connect = 0         #Note: in theory, this should be zero
     ah_resolved = 0             #sum chats with high conf. resp. after hours
+    ah_by_percent = 0.0         #percentage of chats occuring after hours
     
+    bh_chats = 0
+    bh_messages = 0             #unique chats during business hours
     bh_messages = 0             #sum messages to bot during business hours
     bh_gen = 0                  #sum generative responses during business
     bh_retrieval = 0            #sum retrieval responses during business
@@ -59,22 +78,28 @@ class Report:
 
     #calculated attrubutes
     filtered_chats = 0          #chats not counted in total: no time or message
+    time_filtered = 0           #chats filtered due to no time
+    message_filtered = 0        #chats filtered due to no messages
     total_chats = 0             #total number of unique chats
     total_high_conf = 0         #total_retrival + total_gen
     total_responses = 0         #retrieval + gen + low + no
-    resolved_chats = 0          #chats which fired a high confidence response
+    resolved_chats = 0          #= >0 high conf. response + no live request
     accuracy_rate = 0           #total_high_conf / total_user_messages
     resolution_rate = 0         #resolved_chats / total_chats
-    zero_time_chats = 0         #filter out non-real chats based on time
-    zero_message_chats = 0      #filter out non-real chats based on interaction
-    sum_ratings = 0
-    num_ratings = 0
+    sum_ratings = 0             #sum of all ratings (meaningless on its own)
+    num_ratings = 0             #total number of chats rated
 
     
-    #FIXME: WORKING HERE
     def calculate_attributes(self):
+        self.total_chats = self.ah_chats + self.bh_chats
         self.total_user_messages = self.ah_messages + self.bh_messages
-        self.total_gen = self.ah_gen + self.bh_gen
+        
+        if not self.ah_gen:
+            self.ah_gen = 0
+        if not self.bh_gen:
+            self.bh_gen = 0
+        self.total_gen = int(self.ah_gen) + int(self.bh_gen)
+        
         self.total_retrieval = self.ah_retrieval + self.bh_retrieval
         self.total_high_conf = self.total_gen + self.total_retrieval
         self.total_low_conf = self.ah_low_conf + self.bh_low_conf
@@ -84,10 +109,18 @@ class Report:
         self.accuracy_rate = self.total_high_conf / self.total_chats
         self.resolved_chats = self.ah_resolved + self.bh_resolved
         self.resolution_rate = self.resolved_chats / self.total_chats
-
         if self.num_ratings:             #avoid div / 0
             self.average_rating = self.sum_ratings / self.num_ratings
+        self.ah_by_percent=float(self.ah_chats) / float(self.total_chats)*100
 
+
+    def get_month(self):
+        
+        month_ask = "Please enter the month of the report (ie. \"October\"): "
+        self.month = input(month_ask)
+        
+        year_ask = "Please enter the fiscal year of the report: "
+        self.fy = input(year_ask)
 
     def debug_print(self):
         """Method to print raw data summary being read into report"""
@@ -102,16 +135,19 @@ class Report:
 
     def print_to_term(self):
         
-        #print("Filtered chats with zero seconds: ", zero_time_chats)
-        #print("Filtered chats with no user interaction: ", zero_message_chats)
-        print("Total unique chats served: ", self.total_chats)
+        print("\nNote: ", self.filtered_chats, \
+            "chats were filtered from data.\n",\
+            "     ", self.time_filtered, " chats had zero time\n",\
+            "     ", self.message_filtered, " chats had zero messages\n\n")
+        print("TOTALS")
+        print("Chats served: ", self.total_chats)
         print("Chats with a high confidence response: ",
             self.resolved_chats)
-        print("Total messages from users: ", self.total_user_messages)
-        print("Total generative responses: ", self.total_gen)
-        print("Total retrieval responses: ", self.total_retrieval)
-        print("Total low confidence responses: ", self.total_low_conf)
-        print("Total no confidence responses: ", self.total_no_conf)
+        print("Messages from users: ", self.total_user_messages)
+        print("Generative responses: ", self.total_gen)
+        print("Retrieval responses: ", self.total_retrieval)
+        print("Low confidence responses: ", self.total_low_conf)
+        print("No confidence responses: ", self.total_no_conf)
         if self.total_chats:          #avoid div by 0
             print("Accuracy rate: ",
                 (self.total_high_conf / self.total_chats) * 100, "%")
@@ -120,23 +156,60 @@ class Report:
                 (self.resolved_chats / self.total_chats) * 100, "%")
         if self.average_rating:
             print("Average rating: ", self.average_rating, "/ 5")
+        print("Requests for live agents: ", \
+            self.ah_live_request + self.bh_live_request)
+        print("Chats connected with live agent: ", \
+            self.ah_live_connect + self.bh_live_connect)
+        print("\nAFTER HOURS")
+        print("Chats after hours: ", self.ah_chats)
+        print("Percentage of chats occuring after hours: ",\
+              self.ah_by_percent)
+        print("Resolved chats after hours: ", self.ah_resolved)
+        print("Low or no confidence response after hours: ", \
+            self.ah_low_conf + self.ah_no_conf)
+        print("Live agent requests after hours: ", self.ah_live_request)
 
 
-#FIXME: Will return to print-to-file. Set aside until fundamentals complete
-"""
     def print_to_file(self):
+        """
+        Print monthly reporting data to csv file. One line = one month.
+        """
         
         bot_report = open('ivy_log.csv', 'a')
         
-        bot_report.write(report_header + "\n")
-        bot_report.write("Total chats: ")
-        bot_report.write(str(self.total_chats))
+        bot_report.write('\n')              #start new month on new line
         
+        #line template
+        line = '{month},{year},{filtered},{notime},{nomess},{chats},{nummess}'
+        line += '{genresp},{retresp},{lowresp},{noresp},{accuracy},{rez},{rating}'
+        line += '{reqlive},{connlive},{ahchats},{percentah},{rezah},{live_req_ah}'
         
-        #Seperate months with double newline and close file
-        bot_report.write("\n\n")
+        #fill template
+        bot_report.write(line.format(\
+            month=self.month,\
+            year=self.fy,\
+            filtered=self.filtered_chats,\
+            notime=self.time_filtered,\
+            nomess=self.message_filtered,\
+            chats=self.total_chats,\
+            nummess=self.total_user_messages,\
+            genresp=self.total_gen,\
+            retresp=self.total_retrieval,\
+            lowresp=self.total_low_conf,\
+            noresp=self.total_no_conf,\
+            accuracy=self.accuracy_rate,\
+            rez=self.resolution_rate,\
+            rating=self.average_rating,\
+            reqlive=self.total_live_request,\
+            connlive=self.total_live_connect,\
+            ahchats=self.ah_chats,\
+            percentah=self.ah_by_percent,\
+            rezah=self.ah_resolved,\
+            live_req_ah=self.ah_live_request
+            ))
+            
+        print("Write complete. Closing log file.")
         bot_report.close()
-"""
 
 
 def check_hours(start_time):
@@ -239,15 +312,26 @@ def read_report():
         
         #FILTER: do not include data for chats with no time or messages
         if not chat["length"] or not chat["user_messages"]:
+            if not chat["length"]:
+                report.time_filtered +=1
+            if not chat["user_messages"]:
+                report.message_filtered += 1
             report.filtered_chats += 1
             continue
-            
-        #do not count chats filtered from above against total
-        report.total_chats += 1
         
+            
         #determine if chat was after hours
         after_hours = check_hours(chat["start_time"])
         
+        #flags first of two conditions for "resolved chat"
+        rez_flag = False
+        
+        #Read-in report attributes
+        if after_hours:
+            report.ah_chats += 1
+        else:
+            report.bh_chats += 1
+
         if chat["user_messages"]:
             if after_hours:
                 report.ah_messages += int(chat["user_messages"])
@@ -267,17 +351,13 @@ def read_report():
                 report.bh_retrieval += int(chat["bot_retrieval"])
         
         if chat["bot_gen"] or chat["bot_retrieval"]:
-            if after_hours:
-                report.ah_resolved += 1
-            else:
-                report.bh_resolved += 1
+            rez_flag = True
 
         if chat["bot_low_conf"]:
             if after_hours:
                 report.ah_low_conf += int(chat["bot_low_conf"])
             else:
                 report.bh_low_conf += int(chat["bot_low_conf"])
-                
 
         if chat["bot_no_conf"]:
             if after_hours:
@@ -285,13 +365,18 @@ def read_report():
             else:
                 report.bh_no_conf += int(chat["bot_no_conf"])
 
-        if chat["live_request"]:
+        if chat["live_request"] == 'Yes':
             if after_hours:
                 report.ah_live_request += 1
             else:
                 report.bh_live_request += 1
+        elif chat["live_request"] == 'No' and rez_flag == True:
+            if after_hours:
+                report.ah_resolved += 1
+            else:
+                report.bh_resolved += 1
 
-        if chat["live_connect"]:
+        if chat["live_connect"] == 'Yes':
             if after_hours:
                 report.ah_live_connect += 1
             else:
@@ -312,7 +397,33 @@ def read_report():
     
     return report
 
+#*************************DO THE THING****************************************
 
+#read in a report object from a Data Lake .csv
 monthly_report = read_report()
+
+#Ask user for month and fical year. This avoids some errors with ivy's data
+monthly_report.get_month()
+
+#Let user inspect the data before writing to log
 monthly_report.print_to_term()
-#print_to_file(monthly_report)
+
+#Ask if the data should be written
+while True:
+    print("\nWrite this data to log file?")
+    
+    response = input("Enter 'Y' to write or 'Q' to quit: ")
+
+    if response == 'Y' or response == 'y':
+        break
+    elif response == 'Q' or response == 'q':
+        sys.exit(0)
+    else:
+        print("Invalid input.\n")
+        continue
+
+#write the log file
+monthly_report.print_to_file()
+
+#be nice
+print("Finished")
